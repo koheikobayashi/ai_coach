@@ -1,0 +1,501 @@
+app:
+  description: "AIコーチがトレーニング記録を聞き、褒めて、次のメニュー提案まで行うチャットフロー。記録が含まれる場合はHTMLコメントでJSONを返す。"
+  icon: "🏃"
+  icon_background: "#D1E9FF"
+  mode: advanced-chat
+  name: "AIコーチ（記録抽出つき）"
+  use_icon_as_answer_icon: true
+  kind: app
+  version: 0.1.0
+
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+      image:
+        enabled: false
+      number_limits: 3
+      transfer_methods:
+        - local_file
+        - remote_url
+    opening_statement: "昨日のトレーニング、何をやった？（例：ラン30分 / 筋トレ45分 / 休養 など）"
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - "昨日のメニューを入力する"
+      - "今日のおすすめメニューは？"
+      - "1週間の振り返りをして"
+    suggested_questions_after_answer:
+      enabled: true
+    text_to_speech:
+      enabled: false
+      language: ""
+      voice: ""
+  graph:
+    edges:
+      - data:
+          isInIteration: false
+          sourceType: start
+          targetType: parameter-extractor
+        id: start-source-pe-target
+        source: "start"
+        sourceHandle: source
+        target: "pe"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          sourceType: parameter-extractor
+          targetType: code
+        id: pe-source-normalize-target
+        source: "pe"
+        sourceHandle: source
+        target: "normalize"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: llm
+        id: normalize-source-coach-target
+        source: "normalize"
+        sourceHandle: source
+        target: "coach"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          sourceType: llm
+          targetType: answer
+        id: coach-source-answer-target
+        source: "coach"
+        sourceHandle: source
+        target: "answer"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+
+    nodes:
+      - data:
+          desc: ""
+          selected: false
+          title: "開始"
+          type: start
+          variables:
+            - label: "ユーザー名（任意）"
+              max_length: 48
+              options: []
+              required: false
+              type: text-input
+              variable: user_name
+            - label: "競技/種目（任意）"
+              max_length: 64
+              options: []
+              required: false
+              type: text-input
+              variable: default_sport
+            - label: "目標（任意）"
+              max_length: 2048
+              options: []
+              required: false
+              type: paragraph
+              variable: goal
+            - label: "過去7日サマリ（JSON, 任意 / Djangoから渡す想定）"
+              max_length: 12000
+              options: []
+              required: false
+              type: paragraph
+              variable: stats_json
+            - label: "今日の日付（YYYY-MM-DD, 任意 / Djangoから渡す想定）"
+              max_length: 16
+              options: []
+              required: false
+              type: text-input
+              variable: today
+          height: 190
+        id: "start"
+        position:
+          x: 30
+          y: 240
+        positionAbsolute:
+          x: 30
+          y: 240
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 320
+
+      - data:
+          desc: ""
+          title: "入力の抽出（intent/記録情報）"
+          type: parameter-extractor
+          query:
+            - sys
+            - query
+          instruction: |
+            あなたはスポーツのトレーニング記録入力を解析する抽出器です。
+            ユーザーの入力（日本語）から、次のパラメータをできるだけ埋めてください。
+
+            - intent:
+              - log: 記録（トレーニング内容/休養の報告）
+              - plan: メニュー提案の依頼
+              - analyse: 1週間の振り返り/評価の依頼
+              - question: 質問
+              - other: それ以外
+            - date_hint: "yesterday" / "today" / "unknown" / もしくは "YYYY-MM-DD"
+              - 「昨日」「きのう」は yesterday
+              - 「今日」は today
+            - activity_type: "cardio" / "strength" / "skill" / "mobility" / "rest" / "other"
+            - sport: 種目名（例：ラン、スイム、筋トレ、サッカー等）
+            - duration_min: 分（数値）
+            - rpe: 主観強度 1-10（数値、分からなければ空）
+            - details: フリーテキスト（セット数、距離、内容メモなど）
+            - is_rest: 休養/オフが明示されているなら true
+          model:
+            completion_params:
+              temperature: 0
+            mode: chat
+            name: gpt-4o-mini
+            provider: openai
+          parameters:
+            - name: intent
+              type: string
+              required: true
+              description: "log|plan|analyse|question|other"
+            - name: date_hint
+              type: string
+              required: false
+              description: "yesterday|today|unknown|YYYY-MM-DD"
+            - name: activity_type
+              type: string
+              required: false
+              description: "cardio|strength|skill|mobility|rest|other"
+            - name: sport
+              type: string
+              required: false
+              description: "種目名"
+            - name: duration_min
+              type: number
+              required: false
+              description: "分"
+            - name: rpe
+              type: number
+              required: false
+              description: "主観強度1-10"
+            - name: details
+              type: string
+              required: false
+              description: "内容メモ"
+            - name: is_rest
+              type: boolean
+              required: false
+              description: "休養ならtrue"
+        id: "pe"
+        position:
+          x: 390
+          y: 240
+        positionAbsolute:
+          x: 390
+          y: 240
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 320
+        height: 120
+
+      - data:
+          desc: ""
+          title: "正規化 + LOG_PAYLOAD生成"
+          type: code
+          code_language: python3
+          variables:
+            - variable: intent
+              value_selector:
+                - pe
+                - intent
+            - variable: date_hint
+              value_selector:
+                - pe
+                - date_hint
+            - variable: activity_type
+              value_selector:
+                - pe
+                - activity_type
+            - variable: sport
+              value_selector:
+                - pe
+                - sport
+            - variable: duration_min
+              value_selector:
+                - pe
+                - duration_min
+            - variable: rpe
+              value_selector:
+                - pe
+                - rpe
+            - variable: details
+              value_selector:
+                - pe
+                - details
+            - variable: is_rest
+              value_selector:
+                - pe
+                - is_rest
+            - variable: default_sport
+              value_selector:
+                - start
+                - default_sport
+            - variable: today
+              value_selector:
+                - start
+                - today
+            - variable: raw_user_input
+              value_selector:
+                - sys
+                - query
+          outputs:
+            is_log:
+              children: null
+              type: boolean
+            summary:
+              children: null
+              type: string
+            log_json:
+              children: null
+              type: string
+            payload_marker:
+              children: null
+              type: string
+          code: |
+            import json
+            import re
+            from datetime import datetime, timedelta
+
+            def _safe_strip(x):
+                if x is None:
+                    return ""
+                return str(x).strip()
+
+            def _parse_today(today_str: str):
+                s = _safe_strip(today_str)
+                if not s:
+                    return None
+                try:
+                    return datetime.strptime(s, "%Y-%m-%d").date()
+                except Exception:
+                    return None
+
+            def _normalize_date(date_hint: str, today_str: str):
+                dh = _safe_strip(date_hint).lower()
+                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", dh):
+                    return dh
+                today = _parse_today(today_str)
+                if today is None:
+                    return None
+                if dh in ["yesterday", "昨日", "きのう"]:
+                    return (today - timedelta(days=1)).strftime("%Y-%m-%d")
+                if dh in ["today", "今日"]:
+                    return today.strftime("%Y-%m-%d")
+                # unknown -> assume yesterday because app asks about yesterday
+                return (today - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            def main(intent, date_hint=None, activity_type=None, sport=None, duration_min=None, rpe=None, details=None,
+                     is_rest=None, default_sport=None, today=None, raw_user_input=None):
+                intent_s = _safe_strip(intent).lower()
+
+                sport_s = _safe_strip(sport) or _safe_strip(default_sport)
+                activity_s = _safe_strip(activity_type).lower()
+                details_s = _safe_strip(details)
+
+                # 判定：記録かどうか（intent=log または、それっぽい情報がある）
+                looks_like_log = (
+                    intent_s == "log"
+                    or bool(activity_s)
+                    or (duration_min is not None)
+                    or bool(details_s)
+                    or bool(is_rest)
+                    or (intent_s == "other" and any(k in _safe_strip(raw_user_input) for k in ["分", "km", "キロ", "セット", "回", "休養", "オフ"]))
+                )
+
+                # 日付（可能ならISOに）
+                log_date = _normalize_date(date_hint, today)
+
+                if is_rest:
+                    activity_s = "rest"
+
+                # rpe整形
+                rpe_v = None
+                try:
+                    if rpe is not None:
+                        rpe_v = float(rpe)
+                        if rpe_v.is_integer():
+                            rpe_v = int(rpe_v)
+                except Exception:
+                    rpe_v = None
+
+                # duration整形
+                dur_v = None
+                try:
+                    if duration_min is not None:
+                        dur_v = float(duration_min)
+                        if dur_v.is_integer():
+                            dur_v = int(dur_v)
+                except Exception:
+                    dur_v = None
+
+                # まとめ（LLMに渡す用）
+                parts = []
+                if log_date:
+                    parts.append(f"date={log_date}")
+                if activity_s:
+                    parts.append(f"type={activity_s}")
+                if sport_s:
+                    parts.append(f"sport={sport_s}")
+                if dur_v is not None:
+                    parts.append(f"duration_min={dur_v}")
+                if rpe_v is not None:
+                    parts.append(f"rpe={rpe_v}")
+                if details_s:
+                    parts.append(f"details={details_s}")
+                summary = " / ".join(parts) if parts else ""
+
+                log_json = ""
+                payload_marker = ""
+
+                if looks_like_log:
+                    payload = {
+                        "type": "training_log",
+                        "date": log_date,
+                        "activity_type": activity_s or None,
+                        "sport": sport_s or None,
+                        "duration_min": dur_v,
+                        "rpe": rpe_v,
+                        "details": details_s or None,
+                        "raw_user_input": _safe_strip(raw_user_input) or None
+                    }
+                    log_json = json.dumps(payload, ensure_ascii=False)
+                    payload_marker = f"<!--LOG_PAYLOAD {log_json} -->"
+
+                return {
+                    "is_log": bool(looks_like_log),
+                    "summary": summary,
+                    "log_json": log_json,
+                    "payload_marker": payload_marker
+                }
+        id: "normalize"
+        position:
+          x: 750
+          y: 240
+        positionAbsolute:
+          x: 750
+          y: 240
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 360
+        height: 140
+
+      - data:
+          desc: ""
+          title: "AIコーチ"
+          type: llm
+          context:
+            enabled: false
+            variable_selector: []
+          memory:
+            role_prefix:
+              assistant: ""
+              user: ""
+            window:
+              enabled: false
+              size: 10
+          model:
+            completion_params:
+              temperature: 0.7
+              top_p: 0.9
+            mode: chat
+            name: gpt-4o
+            provider: openai
+          prompt_template:
+            - id: "sys-coach"
+              role: system
+              text: |
+                あなたは「スポーツAIコーチ」です。口調はフレンドリーで前向き、でも中身は具体的に。
+
+                目的：
+                - ユーザーが継続できるように、短く褒める（具体ポイントを1〜2個）
+                - その日の状態に合わせて、次の一手（今日/明日）の提案を2案出す（負荷高/低の2案）
+                - 最後に質問を1つだけして次の入力を促す
+
+                ルール：
+                - 医療行為の断定はしない（痛みや体調不良が強い場合は「専門家に相談も検討」程度）
+                - 文章は長すぎない（目安：6〜12行）
+                - 絵文字は控えめ（0〜2個）
+            - id: "usr-coach"
+              role: user
+              text: |
+                ユーザー名: {{#start.user_name#}}
+                目標: {{#start.goal#}}
+                過去7日サマリ(JSON): {{#start.stats_json#}}
+                今日(YYYY-MM-DD): {{#start.today#}}
+
+                入力は記録？: {{#normalize.is_log#}}
+                抽出された記録サマリ: {{#normalize.summary#}}
+
+                ユーザーの入力本文:
+                {{#sys.query#}}
+
+                指示：
+                - 「入力は記録？」がtrueなら、記録内容を踏まえて褒める→軽い振り返り→次の提案2案。
+                - falseなら、ユーザーの意図（質問/提案依頼/振り返り依頼）に答えてから、次の提案2案。
+                - 最後に質問を1つだけ。
+          vision:
+            enabled: false
+        id: "coach"
+        position:
+          x: 1150
+          y: 240
+        positionAbsolute:
+          x: 1150
+          y: 240
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 360
+        height: 120
+
+      - data:
+          desc: ""
+          title: "返答"
+          type: answer
+          answer: |
+            {{#coach.text#}}
+
+            {{#normalize.payload_marker#}}
+          variables: []
+        id: "answer"
+        position:
+          x: 1550
+          y: 240
+        positionAbsolute:
+          x: 1550
+          y: 240
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 320
+        height: 120
+
+  viewport:
+    x: 50
+    y: 50
+    zoom: 0.7

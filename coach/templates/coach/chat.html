@@ -1,0 +1,27 @@
+{% extends "coach/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="chat-page">
+  <div class="coach-section">
+    <img src="{% static 'images/coach.png' %}" alt="Coach" class="coach-img" onerror="this.style.display='none'">
+    <div class="speech-bubble">
+      <p>こんにちは、{{ user.username }}さん！<br>今日のトレーニングについて何でも聞いてください。</p>
+    </div>
+  </div>
+
+  <div class="chat-widget">
+    {% if dify_chat_url %}
+    <iframe
+      src="{{ dify_chat_url }}"
+      style="width: 100%; height: 100%; border: none;"
+      allow="microphone"
+    ></iframe>
+    {% else %}
+    <div class="chat-placeholder">
+      <p>チャットウィジェットを表示するには<br>.envにDIFY_CHAT_URLを設定してください。</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

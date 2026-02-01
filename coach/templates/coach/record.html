@@ -1,0 +1,21 @@
+{% extends "coach/base.html" %}
+
+{% block content %}
+<div class="record-page">
+  <h2>トレーニング記録</h2>
+
+  <form method="post" class="record-form">
+    {% csrf_token %}
+    {% for field in form %}
+    <div class="form-group">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}
+      <span class="field-error">{{ field.errors.0 }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary btn-full">記録する</button>
+  </form>
+</div>
+{% endblock %}

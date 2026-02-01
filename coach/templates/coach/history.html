@@ -1,0 +1,35 @@
+{% extends "coach/base.html" %}
+
+{% block content %}
+<div class="history-page">
+  <h2>トレーニング履歴</h2>
+
+  {% if records %}
+  <div class="record-list">
+    {% for record in records %}
+    <div class="record-card">
+      <div class="record-date">{{ record.date }}</div>
+      <div class="record-detail">
+        <strong>{{ record.exercise }}</strong>
+        <span>{{ record.sets }}セット</span>
+        {% if record.weight %}
+        <span>{{ record.weight }}kg</span>
+        {% endif %}
+        {% if record.reps %}
+        <span>{{ record.reps }}回</span>
+        {% endif %}
+      </div>
+      {% if record.memo %}
+      <div class="record-memo">{{ record.memo }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p>まだ記録がありません。</p>
+    <a href="{% url 'record' %}" class="btn btn-primary">記録を追加する</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
