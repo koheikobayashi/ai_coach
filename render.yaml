@@ -19,6 +19,8 @@ services:
         sync: false
       - key: DIFY_CHAT_URL
         sync: false
+      - key: DIFY_API_KEY
+        sync: false
       - key: GAS_POST_URL
         sync: false
       - key: GAS_GET_URL

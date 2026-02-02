@@ -23,6 +23,10 @@
 
     {% if user.is_authenticated %}
     <nav class="bottom-nav">
+      <a href="{% url 'ai_coach' %}" class="nav-item {% if request.resolver_match.url_name == 'ai_coach' %}active{% endif %}">
+        <span class="nav-icon">🏋️</span>
+        <span class="nav-label">AIコーチ</span>
+      </a>
       <a href="{% url 'chat' %}" class="nav-item {% if request.resolver_match.url_name == 'chat' %}active{% endif %}">
         <span class="nav-icon">💬</span>
         <span class="nav-label">Chat</span>

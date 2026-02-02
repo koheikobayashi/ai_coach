@@ -6,7 +6,9 @@ import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
 
 from .forms import TrainingRecordForm
 
@@ -14,9 +16,134 @@ logger = logging.getLogger(__name__)
 
 
 @login_required
+def ai_coach(request):
+    return render(request, 'coach/ai_coach.html')
+
+
+@login_required
+def ai_coach_api(request):
+    """GASからトレーニング記録を取得し、Difyに送ってアドバイスを受け取る"""
+    api_key = settings.DIFY_API_KEY
+    if not api_key:
+        return JsonResponse({'error': 'DIFY_API_KEYが設定されていません。'}, status=500)
+
+    # GASからトレーニング記録を取得
+    records = []
+    gas_url = settings.GAS_GET_URL
+    if gas_url:
+        try:
+            params = {'user': request.user.username}
+            resp = requests.get(gas_url, params=params, timeout=10)
+            resp.raise_for_status()
+            records = resp.json()
+        except (requests.RequestException, json.JSONDecodeError, ValueError):
+            logger.exception('GAS GET failed in ai_coach_api')
+
+    # 記録をテキストにまとめる
+    if records:
+        lines = []
+        for r in records:
+            parts = []
+            if r.get('date'):
+                parts.append(r['date'])
+            if r.get('exercise'):
+                parts.append(r['exercise'])
+            if r.get('sets'):
+                parts.append(f"{r['sets']}セット")
+            if r.get('weight'):
+                parts.append(f"{r['weight']}kg")
+            if r.get('reps'):
+                parts.append(f"{r['reps']}回")
+            if r.get('memo'):
+                parts.append(f"({r['memo']})")
+            lines.append(' / '.join(parts))
+        summary = '以下が私のトレーニング記録です。褒めて、アドバイスをください。\n\n' + '\n'.join(lines)
+    else:
+        summary = 'まだトレーニング記録がありません。これから始める人に向けて励ましとアドバイスをください。'
+
+    # Dify APIにアドバイスを依頼
+    payload = {
+        'inputs': {},
+        'query': summary,
+        'response_mode': 'blocking',
+        'conversation_id': '',
+        'user': request.user.username,
+    }
+
+    try:
+        resp = requests.post(
+            'https://api.dify.ai/v1/chat-messages',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        logger.exception('Dify API call failed in ai_coach_api')
+        return JsonResponse({'error': 'AIコーチからの応答に失敗しました。'}, status=502)
+
+    return JsonResponse({'advice': data.get('answer', '')})
+
+
+@login_required
 def chat(request):
-    return render(request, 'coach/chat.html', {
-        'dify_chat_url': settings.DIFY_CHAT_URL,
+    return render(request, 'coach/chat.html')
+
+
+@login_required
+@require_POST
+def chat_api(request):
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    user_message = body.get('message', '').strip()
+    if not user_message:
+        return JsonResponse({'error': 'Message is required'}, status=400)
+
+    api_key = settings.DIFY_API_KEY
+    if not api_key:
+        return JsonResponse({'error': 'DIFY_API_KEY is not configured'}, status=500)
+
+    conversation_id = request.session.get('dify_conversation_id', '')
+
+    payload = {
+        'inputs': {},
+        'query': user_message,
+        'response_mode': 'blocking',
+        'conversation_id': conversation_id,
+        'user': request.user.username,
+    }
+
+    try:
+        resp = requests.post(
+            'https://api.dify.ai/v1/chat-messages',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        logger.exception('Dify API call failed')
+        return JsonResponse({'error': 'AIへの問い合わせに失敗しました。'}, status=502)
+
+    # Save conversation_id for follow-up messages
+    new_conversation_id = data.get('conversation_id', '')
+    if new_conversation_id:
+        request.session['dify_conversation_id'] = new_conversation_id
+
+    return JsonResponse({
+        'answer': data.get('answer', ''),
+        'conversation_id': new_conversation_id,
     })
 
 

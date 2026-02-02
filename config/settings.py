@@ -97,6 +97,7 @@ LOGOUT_REDIRECT_URL = '/login/'
 
 # Dify
 DIFY_CHAT_URL = os.environ.get('DIFY_CHAT_URL', '')
+DIFY_API_KEY = os.environ.get('DIFY_API_KEY', '')
 
 # GAS
 GAS_POST_URL = os.environ.get('GAS_POST_URL', '')

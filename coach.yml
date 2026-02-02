@@ -7,9 +7,8 @@ app:
   use_icon_as_answer_icon: false
 
 dependencies: []
-
 kind: app
-version: 0.3.0
+version: 0.5.0
 
 workflow:
   conversation_variables: []
@@ -24,7 +23,9 @@ workflow:
         audio_file_size_limit: 50
         batch_count_limit: 5
         file_size_limit: 15
+        image_file_batch_limit: 10
         image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
         video_file_size_limit: 100
         workflow_file_upload_limit: 10
       image:
@@ -55,10 +56,10 @@ workflow:
           isInLoop: false
           sourceType: start
           targetType: parameter-extractor
-        id: 1000-source-2000-target
-        source: "1000"
+        id: start-source-extract-target
+        source: "start"
         sourceHandle: source
-        target: "2000"
+        target: "extract"
         targetHandle: target
         type: custom
         zIndex: 0
@@ -67,11 +68,37 @@ workflow:
           isInIteration: false
           isInLoop: false
           sourceType: parameter-extractor
-          targetType: llm
-        id: 2000-source-llm-target
-        source: "2000"
+          targetType: code
+        id: extract-source-build_payload-target
+        source: "extract"
         sourceHandle: source
-        target: "llm"
+        target: "build_payload"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: code
+          targetType: http-request
+        id: build_payload-source-gas_post-target
+        source: "build_payload"
+        sourceHandle: source
+        target: "gas_post"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: http-request
+          targetType: llm
+        id: gas_post-source-coach_llm-target
+        source: "gas_post"
+        sourceHandle: source
+        target: "coach_llm"
         targetHandle: target
         type: custom
         zIndex: 0
@@ -81,8 +108,8 @@ workflow:
           isInLoop: false
           sourceType: llm
           targetType: answer
-        id: llm-source-answer-target
-        source: "llm"
+        id: coach_llm-source-answer-target
+        source: "coach_llm"
         sourceHandle: source
         target: "answer"
         targetHandle: target
@@ -97,7 +124,7 @@ workflow:
           type: start
           variables: []
         height: 54
-        id: "1000"
+        id: "start"
         position: { x: 80, y: 282 }
         positionAbsolute: { x: 80, y: 282 }
         selected: false
@@ -154,10 +181,132 @@ workflow:
           variables: []
           vision:
             enabled: false
-        height: 89
-        id: "2000"
+        height: 98
+        id: "extract"
         position: { x: 384, y: 282 }
         positionAbsolute: { x: 384, y: 282 }
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+
+      - data:
+          code_language: python3
+          code: |
+            def main(user_id, workout_items, duration_min, intensity, condition, is_rest) -> dict:
+                from datetime import datetime, timedelta
+                try:
+                    from zoneinfo import ZoneInfo
+                    tz = ZoneInfo("Asia/Tokyo")
+                    now = datetime.now(tz)
+                except Exception:
+                    now = datetime.utcnow()
+
+                date = (now - timedelta(days=1)).date().isoformat()
+
+                items = workout_items or []
+                if is_rest:
+                    exercise = "rest"
+                elif items:
+                    exercise = " / ".join([str(x) for x in items])
+                else:
+                    exercise = "unknown"
+
+                memo_parts = []
+                if duration_min is not None:
+                    memo_parts.append(f"duration_min={duration_min}")
+                if intensity:
+                    memo_parts.append(f"intensity={intensity}")
+                if condition:
+                    memo_parts.append(f"condition={condition}")
+                memo = ", ".join(memo_parts)
+
+                return {
+                    "user": user_id or "unknown",
+                    "date": date,
+                    "exercise": exercise,
+                    "sets": "",
+                    "weight": "",
+                    "reps": "",
+                    "memo": memo,
+                }
+          desc: ""
+          outputs:
+            user: { children: null, type: string }
+            date: { children: null, type: string }
+            exercise: { children: null, type: string }
+            sets: { children: null, type: string }
+            weight: { children: null, type: string }
+            reps: { children: null, type: string }
+            memo: { children: null, type: string }
+          selected: false
+          title: "GAS送信用payload作成"
+          type: code
+          variables:
+            - value_selector: [sys, user_id]
+              variable: user_id
+            - value_selector: [extract, workout_items]
+              variable: workout_items
+            - value_selector: [extract, duration_min]
+              variable: duration_min
+            - value_selector: [extract, intensity]
+              variable: intensity
+            - value_selector: [extract, condition]
+              variable: condition
+            - value_selector: [extract, is_rest]
+              variable: is_rest
+        height: 54
+        id: "build_payload"
+        position: { x: 684, y: 282 }
+        positionAbsolute: { x: 684, y: 282 }
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+
+      - data:
+          authorization:
+            config: null
+            type: no-auth
+          body:
+            type: json
+            data:
+              - id: key-value-1
+                key: ""
+                type: text
+                value: |
+                  {
+                    "user": "{{#build_payload.user#}}",
+                    "date": "{{#build_payload.date#}}",
+                    "exercise": "{{#build_payload.exercise#}}",
+                    "sets": "{{#build_payload.sets#}}",
+                    "weight": "{{#build_payload.weight#}}",
+                    "reps": "{{#build_payload.reps#}}",
+                    "memo": "{{#build_payload.memo#}}"
+                  }
+          desc: ""
+          headers: |
+            Content-Type: application/json
+          method: post
+          params: ""
+          retry_config:
+            max_retries: 2
+            retry_enabled: true
+            retry_interval: 200
+          ssl_verify: true
+          timeout:
+            max_connect_timeout: 0
+            max_read_timeout: 0
+            max_write_timeout: 0
+          title: "GASに記録"
+          type: http-request
+          url: "REPLACE_ME_WITH_YOUR_GAS_WEBAPP_URL"
+        height: 126
+        id: "gas_post"
+        position: { x: 984, y: 282 }
+        positionAbsolute: { x: 984, y: 282 }
         selected: false
         sourcePosition: right
         targetPosition: left
@@ -169,13 +318,6 @@ workflow:
             enabled: false
             variable_selector: []
           desc: ""
-          memory:
-            role_prefix:
-              assistant: ""
-              user: ""
-            window:
-              enabled: false
-              size: 10
           model:
             completion_params:
               temperature: 0.7
@@ -183,8 +325,7 @@ workflow:
             name: gpt-4o-mini
             provider: openai
           prompt_template:
-            - edition_type: basic
-              id: 7f9b0c2a-6e87-4b7a-8e6d-9c7bdc8b6d11
+            - id: sys
               role: system
               text: |
                 あなたは優秀でフレンドリーなスポーツAIコーチです。
@@ -194,29 +335,26 @@ workflow:
                 2) ひとことフィードバック（安全面/負荷バランス）
                 3) 明日の提案を2〜3個（所要時間も添える）
                 4) 最後に質問を1つ
-            - edition_type: basic
-              id: 2c9a7b1c-3d2d-4e8f-8c2e-7a2d9d2b0a21
+            - id: user
               role: user
               text: |
                 ユーザー発言: {{#sys.query#}}
                 抽出結果:
-                - workout_items: {{#2000.workout_items#}}
-                - duration_min: {{#2000.duration_min#}}
-                - intensity: {{#2000.intensity#}}
-                - condition: {{#2000.condition#}}
-                - is_rest: {{#2000.is_rest#}}
+                - workout_items: {{#extract.workout_items#}}
+                - duration_min: {{#extract.duration_min#}}
+                - intensity: {{#extract.intensity#}}
+                - condition: {{#extract.condition#}}
+                - is_rest: {{#extract.is_rest#}}
           selected: false
           title: "AIコーチ返信"
           type: llm
           variables: []
           vision:
             enabled: false
-            configs:
-              detail: high
         height: 98
-        id: "llm"
-        position: { x: 684, y: 282 }
-        positionAbsolute: { x: 684, y: 282 }
+        id: "coach_llm"
+        position: { x: 1284, y: 282 }
+        positionAbsolute: { x: 1284, y: 282 }
         selected: false
         sourcePosition: right
         targetPosition: left
@@ -224,7 +362,7 @@ workflow:
         width: 244
 
       - data:
-          answer: "{{#llm.text#}}"
+          answer: "{{#coach_llm.text#}}"
           desc: ""
           selected: false
           title: "返信"
@@ -232,8 +370,8 @@ workflow:
           variables: []
         height: 104
         id: "answer"
-        position: { x: 984, y: 282 }
-        positionAbsolute: { x: 984, y: 282 }
+        position: { x: 1584, y: 282 }
+        positionAbsolute: { x: 1584, y: 282 }
         selected: false
         sourcePosition: right
         targetPosition: left

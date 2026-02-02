@@ -3,25 +3,129 @@
 
 {% block content %}
 <div class="chat-page">
-  <div class="coach-section">
-    <img src="{% static 'images/coach.png' %}" alt="Coach" class="coach-img" onerror="this.style.display='none'">
-    <div class="speech-bubble">
-      <p>こんにちは、{{ user.username }}さん！<br>今日のトレーニングについて何でも聞いてください。</p>
+  <div class="chat-messages" id="chat-messages">
+    <div class="coach-message">
+      <img src="{% static 'images/coach.png' %}" alt="Coach" class="coach-img" onerror="this.style.display='none'">
+      <div class="speech-bubble">
+        <p>こんにちは、{{ user.username }}さん！<br>今日のトレーニングについて何でも聞いてください。</p>
+      </div>
     </div>
   </div>
 
-  <div class="chat-widget">
-    {% if dify_chat_url %}
-    <iframe
-      src="{{ dify_chat_url }}"
-      style="width: 100%; height: 100%; border: none;"
-      allow="microphone"
-    ></iframe>
-    {% else %}
-    <div class="chat-placeholder">
-      <p>チャットウィジェットを表示するには<br>.envにDIFY_CHAT_URLを設定してください。</p>
-    </div>
-    {% endif %}
+  <div class="chat-input-area">
+    <input type="text" id="chat-input" class="chat-text-input" placeholder="メッセージを入力..." autocomplete="off">
+    <button id="chat-send" class="chat-send-btn" type="button">送信</button>
   </div>
 </div>
+
+<script>
+(function() {
+  const messagesEl = document.getElementById('chat-messages');
+  const inputEl = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+  const csrfToken = '{{ csrf_token }}';
+  let sending = false;
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addUserMessage(text) {
+    const div = document.createElement('div');
+    div.className = 'user-message';
+    const bubble = document.createElement('div');
+    bubble.className = 'speech-bubble user-bubble';
+    bubble.textContent = text;
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    scrollToBottom();
+  }
+
+  function addCoachMessage(text) {
+    const div = document.createElement('div');
+    div.className = 'coach-message';
+    const img = document.createElement('img');
+    img.src = "{% static 'images/coach.png' %}";
+    img.alt = 'Coach';
+    img.className = 'coach-img';
+    img.onerror = function() { this.style.display = 'none'; };
+    const bubble = document.createElement('div');
+    bubble.className = 'speech-bubble';
+    bubble.innerHTML = text.replace(/\n/g, '<br>');
+    div.appendChild(img);
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    scrollToBottom();
+  }
+
+  function addLoading() {
+    const div = document.createElement('div');
+    div.className = 'coach-message';
+    div.id = 'loading-message';
+    const img = document.createElement('img');
+    img.src = "{% static 'images/coach.png' %}";
+    img.alt = 'Coach';
+    img.className = 'coach-img';
+    img.onerror = function() { this.style.display = 'none'; };
+    const bubble = document.createElement('div');
+    bubble.className = 'speech-bubble loading-bubble';
+    bubble.innerHTML = '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>';
+    div.appendChild(img);
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    scrollToBottom();
+  }
+
+  function removeLoading() {
+    const el = document.getElementById('loading-message');
+    if (el) el.remove();
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || sending) return;
+
+    sending = true;
+    inputEl.value = '';
+    sendBtn.disabled = true;
+    inputEl.disabled = true;
+
+    addUserMessage(text);
+    addLoading();
+
+    try {
+      const resp = await fetch('{% url "chat_api" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await resp.json();
+      removeLoading();
+      if (resp.ok && data.answer) {
+        addCoachMessage(data.answer);
+      } else {
+        addCoachMessage(data.error || 'エラーが発生しました。もう一度お試しください。');
+      }
+    } catch (e) {
+      removeLoading();
+      addCoachMessage('通信エラーが発生しました。もう一度お試しください。');
+    } finally {
+      sending = false;
+      sendBtn.disabled = false;
+      inputEl.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.isComposing) {
+      sendMessage();
+    }
+  });
+})();
+</script>
 {% endblock %}
